@@ -40,7 +40,17 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
+	// TODO: 시스템 콜 핸들러 구현하기
 	printf ("system call!\n");
 	thread_exit ();
+}
+
+// TODO: halt()
+void
+halt(void) {
+	power_off();
+}
+
+void exit (int status) {
+	thread_exit();
 }

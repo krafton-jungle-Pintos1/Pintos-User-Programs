@@ -26,6 +26,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static bool setup_stack(struct intr_frame *if_);
 
 /* General process initializer for initd and other process. */
 static void
@@ -158,12 +159,35 @@ error:
 	thread_exit ();
 }
 
+// TODO: 명령어 인자 파싱하는 함수 구현 parse_file_name()
+static bool
+parse_file_name(const char *file_name, int *argc, char **argv){
+    char *token, *save_ptr;
+    char *fn_copy = palloc_get_page(0);
+    int count = 0;
+
+    if (fn_copy == NULL)
+        return false;
+    strlcpy(fn_copy, file_name, PGSIZE);
+
+    for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
+         token = strtok_r(NULL, " ", &save_ptr)) {
+        argv[count++] = token;
+    }
+    argv[count] = NULL;
+    *argc = count;
+
+    return true;
+}
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+	int argc;
+	char *argv[MAX_ARGC];
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -176,8 +200,18 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	// TODO: file_name 파싱하는 함수 호출
+    if (!parse_file_name(file_name, &argc, argv)) {
+        palloc_free_page(file_name);
+        return -1;
+    }
+
+	// TODO: 레지스터에 argc와 argv 설정하기
+	_if.R.rdi = (uintptr_t) argc;
+	_if.R.rsi = (uintptr_t) argv;
+
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (argv[0], &_if);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -204,6 +238,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (1) {
+
+	}
 	return -1;
 }
 
@@ -414,10 +451,49 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	// TODO: 레지스터에서 저장된 argc와 argv를 읽는다.
+	int argc = (int) if_->R.rdi;
+	char **argv = (char **) if_->R.rsi;
+	
+	// 주소를 저장할 배열을 선언한다.
+	void *argv_addrs[MAX_ARGC];
 
-	success = true;
+	// TODO: 인자 문자열을 스택에 저장한다.
+	for (int i = argc - 1; i >= 0; i--) {
+		size_t len = strlen(argv[i]) + 1;
+		if_->rsp -= len;
+		memcpy(if_->rsp, argv[i], len);
+		argv_addrs[i] = if_->rsp;
+	}
+
+	// TODO: 스택 포인터를 8바이트 경계로 정렬한다.
+	uintptr_t rsp = (uintptr_t)if_->rsp;
+	rsp &= ~0x7;
+	if_->rsp = (void *)rsp;
+
+	// TODO: argv[argc]를 NULL로 설정한다.
+	if_->rsp -= sizeof(char *);
+	*((char **)if_->rsp) = NULL;
+
+	// TODO: 주소를 스택에 푸시한다.
+	for (int i = argc - 1; i >= 0; i--) {
+		if_->rsp -= sizeof(char *);
+		*((char **)if_->rsp) = argv_addrs[i];
+	}
+
+	// TODO: argv 포인터를 스택에 푸시한다.
+	char **argv_ptr = (char **)if_->rsp;
+	if_->rsp -= sizeof(char **);
+	*((char ***)if_->rsp) = argv_ptr;
+
+	// TODO: argc 값을 스택에 푸시한다.
+	if_->rsp -= sizeof(int);
+	*((int *)if_->rsp) = argc;
+
+	// TODO: 가짜 리턴 주소를 스택에 푸시한다.
+	if_->rsp -= sizeof(void *);
+	*((void **)if_->rsp) = 0;
+		success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */

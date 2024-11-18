@@ -10,4 +10,6 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
 
+#define MAX_ARGC 128
+
 #endif /* userprog/process.h */
