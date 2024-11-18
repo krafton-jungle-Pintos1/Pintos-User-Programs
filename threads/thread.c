@@ -479,8 +479,12 @@ void thread_test_max_priority(void)
 	struct thread *cur = thread_current();
 	struct thread *ready_front = list_entry(list_front(&ready_list), struct thread, elem);
 
-	if (cur->priority < ready_front->priority)
-		thread_yield();
+#ifdef USERPROG /** Project 2: 외부 인터럽트에 의한 thread yield 방지 */
+        if (intr_context())
+            intr_yield_on_return();
+        else
+#endif
+            thread_yield();
 }
 
 void donate_priority()
