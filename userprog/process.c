@@ -22,10 +22,10 @@
 #include "vm/vm.h"
 #endif
 
-static void process_cleanup (void);
-static bool load (const char *file_name, struct intr_frame *if_);
-static void initd (void *f_name);
-static void __do_fork (void *);
+static void process_cleanup(void);
+static bool load(const char *file_name, struct intr_frame *if_);
+static void initd(void *f_name);
+static void __do_fork(void *);
 
 /* General process initializer for initd and other process. */
 static void
@@ -50,8 +50,13 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	char *savePtr;		// strtok_r 변수
+	char *real_name;	// 실제 파일 이름 변수
+	real_name = strtok_r(file_name, " ", &savePtr);
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create(real_name, PRI_DEFAULT, initd, fn_copy);
+	
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -204,6 +209,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	thread_sleep(1000);
 	return -1;
 }
 
@@ -329,6 +335,17 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	char **argv = palloc_get_page(0);		// file_name을 공백을 기준으로 나눈 문자열들을 저장
+	int argc = 0;							// argv의 index 역할
+
+ 	// data를 공백을 기준으로 나눠 argv에 저장하고 argc(인덱스)++
+	char *temp;
+	char *save_ptr;
+	for (temp = strtok_r(file_name, " ", &save_ptr); temp != NULL; temp = strtok_r(NULL, " ", &save_ptr))
+	{
+		argv[argc++] = temp;
+	}
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -416,6 +433,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	argument_stack(argv, argc, if_);
 
 	success = true;
 
@@ -423,6 +441,46 @@ done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
 	return success;
+}
+
+/* 
+ * 1. argv를 stack에 저장.
+ * 2. argv 주소를 stack에 저장.
+ * 3. argc stack에 저장.
+ * 4. return address stack에 저장.
+ * 5. stack pointer 갱신.
+ * 6. intr_frame의 rdi, rsi 갱신.
+ */
+void argument_stack(char **argv, int argc, struct intr_frame *if_) {
+    uint64_t *rsp = (uint64_t *)if_->rsp;
+    char *arg_addresses[argc];
+
+    for (int i = argc - 1; i >= 0; i--) {
+        size_t len = strlen(argv[i]) + 1; // 문자열 길이 + NULL
+        rsp = (uint64_t *)((char *)rsp - len); // rsp를 char 단위로 감소
+        memcpy(rsp, argv[i], len); // 문자열 복사
+        arg_addresses[i] = (char *)rsp; // 저장된 주소를 기록
+    }
+
+    rsp = (uint64_t *)((uintptr_t)rsp & ~0x7);
+
+    *(--rsp) = 0;
+
+    for (int i = argc - 1; i >= 0; i--) {
+        *(--rsp) = (uint64_t)arg_addresses[i];
+    }
+
+    *(--rsp) = (uint64_t)rsp;
+
+    *(--rsp) = argc;
+    *(--rsp) = 0;
+
+    if_->rsp = (uintptr_t)rsp;
+    if_->R.rdi = argc;
+    if_->R.rsi = (uint64_t)rsp + sizeof(uint64_t); // argv의 시작 주소
+
+    // 디버깅용
+    hex_dump(if_->rsp, (void *)if_->rsp, USER_STACK - if_->rsp, true);
 }
 
 

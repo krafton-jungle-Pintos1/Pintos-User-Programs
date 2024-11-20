@@ -9,5 +9,6 @@ int process_exec (void *f_name);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
+void argument_stack(char**, int, struct intr_frame*);   // argument를 stack에 저장
 
 #endif /* userprog/process.h */
