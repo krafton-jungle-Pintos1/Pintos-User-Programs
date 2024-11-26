@@ -161,20 +161,18 @@ list_tail(struct list *list)
 	return &list->tail;
 }
 
-/*
-내부 요소 또는 꼬리일 수 있는 BEFORE 바로 앞에 ELEM을 삽입합니다.
-후자의 경우는 list_push_back()과 동일합니다.
-*/
+/* Inserts ELEM just before BEFORE, which may be either an
+	 interior element or a tail.  The latter case is equivalent to
+	 list_push_back(). */
 void list_insert(struct list_elem *before, struct list_elem *elem)
 {
-	ASSERT(is_interior(before) || is_tail(before)); // before가 리스트 내부 원소이거나 tail인지 확인
-	ASSERT(elem != NULL);														// 삽입할 원소가 NULL이 아닌지 확인
+	ASSERT(is_interior(before) || is_tail(before));
+	ASSERT(elem != NULL);
 
-	elem->prev = before->prev; // 새 원소의 prev를 before의 이전 원소로 설정
-	elem->next = before;			 // 새 원소의 next를 before로 설정
-
-	before->prev->next = elem; // before의 이전 원소의 next를 새 원소로 설정
-	before->prev = elem;			 // before의 prev를 새 원소로 설정
+	elem->prev = before->prev;
+	elem->next = before;
+	before->prev->next = elem;
+	before->prev = elem;
 }
 
 /* Removes elements FIRST though LAST (exclusive) from their
@@ -439,27 +437,22 @@ void list_sort(struct list *list, list_less_func *less, void *aux)
 	ASSERT(is_sorted(list_begin(list), list_end(list), less, aux));
 }
 
-/*
-LIST의 적절한 위치에 elem을 삽입하며, 보조 데이터 AUX가 주어지면 less 함수에 따라 정렬 합니다.
-리스트를 정렬할 때마다 O(n) 시간 복잡도를 가집니다
-	*/
+/* Inserts ELEM in the proper position in LIST, which must be
+	 sorted according to LESS given auxiliary data AUX.
+	 Runs in O(n) average case in the number of elements in LIST. */
 void list_insert_ordered(struct list *list, struct list_elem *elem,
 												 list_less_func *less, void *aux)
-/*
-- 정렬된 상태를 유지하면서 삽입
-- 비교 함수를 통해 다양한 정렬 기준 적용 가능
-*/
 {
-	struct list_elem *old_elem;
+	struct list_elem *e;
 
-	ASSERT(list != NULL); // 리스트가 NULL이 아닌지 확인
-	ASSERT(elem != NULL); // 삽입할 원소가 NULL이 아닌지 확인
-	ASSERT(less != NULL); // 비교 함수가 NULL이 아닌지 확인
+	ASSERT(list != NULL);
+	ASSERT(elem != NULL);
+	ASSERT(less != NULL);
 
-	for (old_elem = list_begin(list); old_elem != list_end(list); old_elem = list_next(old_elem))
-		if (less(elem, old_elem, aux))
+	for (e = list_begin(list); e != list_end(list); e = list_next(e))
+		if (less(elem, e, aux))
 			break;
-	return list_insert(old_elem, elem);
+	return list_insert(e, elem);
 }
 
 /* Iterates through LIST and removes all but the first in each

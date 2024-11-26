@@ -30,8 +30,8 @@ static void busy_wait(int64_t loops);
 static void real_time_sleep(int64_t num, int32_t denom);
 
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
-	interrupt PIT_FREQ times per second, and registers the
-	corresponding interrupt. */
+	 interrupt PIT_FREQ times per second, and registers the
+	 corresponding interrupt. */
 void timer_init(void)
 {
 	/* 8254 input frequency divided by TIMER_FREQ, rounded to
@@ -127,7 +127,22 @@ timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
 	thread_tick();
-	thread_awake(ticks); // ticks 가 증가할때마다 awake 작업 수행
+
+	if (thread_mlfqs)
+	{
+		mlfqs_increment_recent_cpu();
+		if (ticks % 4 == 0)
+		{
+			mlfqs_recalculate_priority();
+			if (ticks % TIMER_FREQ == 0)
+			{
+				mlfqs_recalculate_recent_cpu();
+				mlfqs_calculate_load_avg();
+			}
+		}
+	}
+
+	thread_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -150,12 +165,12 @@ too_many_loops(unsigned loops)
 }
 
 /* Iterates through a simple loop LOOPS times, for implementing
-	brief delays.
+	 brief delays.
 
-	Marked NO_INLINE because code alignment can significantly
-	affect timings, so that if this function was inlined
-	differently in different places the results would be difficult
-	to predict. */
+	 Marked NO_INLINE because code alignment can significantly
+	 affect timings, so that if this function was inlined
+	 differently in different places the results would be difficult
+	 to predict. */
 static void NO_INLINE
 busy_wait(int64_t loops)
 {
@@ -169,9 +184,9 @@ real_time_sleep(int64_t num, int32_t denom)
 {
 	/* Convert NUM/DENOM seconds into timer ticks, rounding down.
 
-		(NUM / DENOM) s
+		 (NUM / DENOM) s
 		 ---------------------- = NUM * TIMER_FREQ / DENOM ticks.
-		1 s / TIMER_FREQ ticks
+		 1 s / TIMER_FREQ ticks
 		 */
 	int64_t ticks = num * TIMER_FREQ / denom;
 
@@ -179,14 +194,14 @@ real_time_sleep(int64_t num, int32_t denom)
 	if (ticks > 0)
 	{
 		/* We're waiting for at least one full timer tick.  Use
-			timer_sleep() because it will yield the CPU to other
+			 timer_sleep() because it will yield the CPU to other
 			 processes. */
 		timer_sleep(ticks);
 	}
 	else
 	{
 		/* Otherwise, use a busy-wait loop for more accurate
-			sub-tick timing.  We scale the numerator and denominator
+			 sub-tick timing.  We scale the numerator and denominator
 			 down by 1000 to avoid the possibility of overflow. */
 		ASSERT(denom % 1000 == 0);
 		busy_wait(loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));

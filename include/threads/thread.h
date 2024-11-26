@@ -5,6 +5,10 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+
+/** #Project 2: System Call **/
+#include "threads/synch.h"
+
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +31,14 @@ typedef int tid_t;
 #define PRI_MIN 0			 /* Lowest priority. */
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63		 /* Highest priority. */
+
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
+
+/** #Project 2: System Call  **/
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES * (1 << 9) // 엔트리가 512개 인 이유: 페이지 크기 4kb / 파일 포인터 8byte
 
 /* A kernel thread or user process.
  *
@@ -91,22 +103,43 @@ struct thread
 	tid_t tid;								 /* Thread identifier. */
 	enum thread_status status; /* Thread state. */
 	char name[16];						 /* Name (for debugging purposes). */
-	int priority;							 /* Priority. */
 
-	int64_t wakeup; // 깨어나야 하는 ticks 값
+	int64_t wakeup;
 
-	int init_priority; // 스레드가 priority 를 양도받았다가 다시 반납할 때 원래의 priority 를 복원할 수 있도록 고유의 priority 값을 저장하는 변수
+	int priority; /* Priority. */
 
-	struct lock *wait_on_lock;			// 스레드가 현재 얻기 위해 기다리고 있는 lock 으로 스레드는 이 lock 이 release 되기를 기다린다
-	struct list donations;					// 자신에게 priority를 나누어준 스레드들의 리스트
-	struct list_elem donation_elem; // donations 리스트를 관리하기 위한 element로 thread 구조체의 그냥 elem 과 구분하여 사용하기 위한 변수
+	int init_priority;							// 스레드의 원래 우선순위 저장
+	struct list donations;					// 이 스레드에게 우선순위를 기부한 스레드들의 리스트
+	struct list_elem donation_elem; // donations 리스트에 사용될 리스트 요소
+	struct lock *wait_on_lock;			// 스레드가 현재 대기 중인 lock의 주소
+
+	int nice;
+	int recent_cpu;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
+	struct list_elem allelem; /* List element. */
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
+
+	/** #Project 2: System Call */
+	int exit_status; // 스레드의 종료 상태를 나타내는 변수
+
+	int fd_idx;							// 파일 디스크립터 인덱스
+	struct file **fdt;			// 파일 디스크립터 테이블
+	struct file *runn_file; // 현재 실행중인 파일
+
+	struct intr_frame parent_if; // 부모 프로세스의 인터럽트 프레임
+	struct list child_list;			 // 자식 프로세스 리스트
+	struct list_elem child_elem;
+
+	struct semaphore fork_sema; // fork가 완료될 때 signal
+	struct semaphore exit_sema; // 자식 프로세스 종료 signal
+	struct semaphore wait_sema; // exit_sema를 기다릴 때 사용
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -142,24 +175,25 @@ const char *thread_name(void);
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
 
-void thread_set_priority(int);
 int thread_get_priority(void);
+void thread_set_priority(int);
 
-void thread_set_nice(int);
 int thread_get_nice(void);
-int thread_get_load_avg(void);
+void thread_set_nice(int);
 int thread_get_recent_cpu(void);
+int thread_get_load_avg(void);
 
 void do_iret(struct intr_frame *tf);
 
-// 새로운 함수 정의
+/** #Project 1: Alarm Clock **/
 void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
 
-bool thread_compare_priority(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-void thread_test_max_priority(void);
-
+/** #Project 1: Priority Scheduling **/
+bool thread_priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_compare_donate_priority(const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
 void donate_priority(void);
 void remove_with_lock(struct lock *lock);
 void refresh_priority(void);
+
 #endif /* threads/thread.h */

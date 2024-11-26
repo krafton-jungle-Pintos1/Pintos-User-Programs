@@ -12,9 +12,9 @@ struct semaphore
 };
 
 void sema_init(struct semaphore *, unsigned value);
-void sema_up(struct semaphore *);
 void sema_down(struct semaphore *);
 bool sema_try_down(struct semaphore *);
+void sema_up(struct semaphore *);
 void sema_self_test(void);
 
 /* Lock. */
@@ -41,8 +41,6 @@ void cond_wait(struct condition *, struct lock *);
 void cond_signal(struct condition *, struct lock *);
 void cond_broadcast(struct condition *, struct lock *);
 
-// 새로운 함수
-bool sema_compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 /* Optimization barrier.
  *
  * The compiler will not reorder operations across an
